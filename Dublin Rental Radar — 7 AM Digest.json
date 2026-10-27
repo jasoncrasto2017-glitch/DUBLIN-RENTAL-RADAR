@@ -1,0 +1,169 @@
+{
+  "name": "Dublin Rental Radar — 7 AM Digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "2efba5e9-f321-4e7c-838d-adfb5a9ad0f2",
+      "name": "Every morning at 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -320,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "simple": false,
+        "filters": {
+          "q": "label:Rental-Alerts",
+          "readStatus": "both",
+          "receivedAfter": "={{$now.setZone('Europe/Dublin').minus({ hours: 24 }).toISO()}}"
+        },
+        "options": {}
+      },
+      "id": "b14ed472-edf3-45cd-b217-39d1422b3820",
+      "name": "Get rental alert emails from the last 24 hours",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -48,
+        16
+      ],
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "webhookId": "3c0cbc91-0407-48d9-a53a-5348317234f2",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gQSPDs3x1nvLjH81",
+          "name": "Gmail account 3"
+        }
+      },
+      "notes": "Connect your Gmail OAuth credential. Create a Gmail label named Rental-Alerts and apply it to Daft.ie, Rent.ie, MyHome.ie and any other rental-portal alerts you receive. The date filter is rolling 24 hours."
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItems = $input.all();\nconst validHosts = ['daft.ie', 'rent.ie', 'myhome.ie'];\nconst areaTerms = [\n  'Dublin City Centre', 'City Centre', 'Temple Bar', 'Smithfield', 'Stoneybatter',\n  'Phibsborough', 'Drumcondra', 'Phibsboro', 'Rathmines', 'Ranelagh', 'Rathgar',\n  \"Harold's Cross\", 'Portobello', 'Grand Canal Dock', 'Ballsbridge', 'Sandymount',\n  'Clontarf', 'Raheny', 'Howth', 'Malahide', 'Portmarnock', 'Swords', 'Baldoyle',\n  'Donaghmede', 'Coolock', 'Artane', 'Glasnevin', 'Finglas', 'Ballymun',\n  'Castleknock', 'Blanchardstown', 'Clonsilla', 'Lucan', 'Palmerstown',\n  'Clondalkin', 'Tallaght', 'Citywest', 'Walkinstown', 'Crumlin', 'Kimmage',\n  'Terenure', 'Rathfarnham', 'Dundrum', 'Stillorgan', 'Sandyford', 'Blackrock',\n  'Dun Laoghaire', 'Dún Laoghaire', 'Cabinteely', 'Leopardstown', 'Bray',\n  'Greystones', 'Balbriggan', 'Skerries', 'Rush', 'Lusk', 'Donabate', 'Maynooth',\n  'Leixlip', 'Celbridge', 'Dublin 1', 'Dublin 2', 'Dublin 3', 'Dublin 4',\n  'Dublin 5', 'Dublin 6', 'Dublin 6W', 'Dublin 7', 'Dublin 8', 'Dublin 9',\n  'Dublin 10', 'Dublin 11', 'Dublin 12', 'Dublin 13', 'Dublin 14', 'Dublin 15',\n  'Dublin 16', 'Dublin 17', 'Dublin 18', 'Dublin 20', 'Dublin 22', 'Dublin 24',\n  'County Dublin', 'Co. Dublin', 'Dublin'\n];\nconst centralTerms = [\n  'city centre','temple bar','smithfield','stoneybatter','phibsborough','portobello',\n  'dublin 1','dublin 2','dublin 7','dublin 8','dublin 6','dublin 4','rathmines',\n  'ranelagh','drumcondra','grand canal dock','harold\\'s cross'\n];\n\nfunction decodeEntities(s = '') {\n  return String(s)\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&quot;/gi, '\"')\n    .replace(/&#39;|&apos;/gi, \"'\")\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)));\n}\nfunction stripHtml(s = '') {\n  return decodeEntities(String(s)\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/\\s+/g, ' ')).trim();\n}\nfunction esc(s = '') {\n  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\n}\nfunction getSource(url) {\n  const host = new URL(url).hostname.toLowerCase().replace(/^www\\./, '');\n  if (host.endsWith('daft.ie')) return 'Daft.ie';\n  if (host.endsWith('rent.ie')) return 'Rent.ie';\n  if (host.endsWith('myhome.ie')) return 'MyHome.ie';\n  return host;\n}\nfunction canonicalListingUrl(raw) {\n  let href = decodeEntities(raw || '').trim();\n  href = href.replace(/^\\s+|\\s+$/g, '');\n  try {\n    const u = new URL(href);\n    const host = u.hostname.toLowerCase().replace(/^www\\./, '');\n    if (!validHosts.some(d => host === d || host.endsWith('.' + d))) return null;\n    const path = u.pathname.toLowerCase();\n    // Ignore accounts, searches, alerts and site-wide/navigation links. Only listing-like links.\n    if (/login|register|saved-search|saved_search|unsubscribe|privacy|terms|contact|about|help|newsletter|search\\/?$/.test(path)) return null;\n    if (!/(for-rent|houses-to-let|apartments-to-let|rentals?|to-let|lettings|property|house|apartment|flat|residential|\\/rent\\/)/i.test(path)) return null;\n    u.hash = '';\n    ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','fbclid','gclid'].forEach(k => u.searchParams.delete(k));\n    return u.toString();\n  } catch (e) {\n    return null;\n  }\n}\nfunction detectArea(text, wholeEmailText) {\n  const hay = (' ' + String(text || '').toLowerCase() + ' ');\n  const orderedAreaTerms = [...areaTerms].sort((a, b) => b.length - a.length);\n  for (const term of orderedAreaTerms) {\n    const t = term.toLowerCase();\n    if (hay.includes(t)) return term;\n  }\n  // Some alert emails have a single Dublin-specific search heading but a very short property card.\n  const global = String(wholeEmailText || '').toLowerCase();\n  if (/(dublin|temple bar|smithfield|rathmines|ranelagh|swords|malahide|tallaght|lucan|clontarf|dun laoghaire|dún laoghaire)/i.test(global)) return 'Dublin / nearby area';\n  return '';\n}\nfunction detectPrice(text) {\n  const matches = String(text || '').match(/€\\s?\\d[\\d,.]*(?:\\s?(?:per\\s?month|monthly|\\/month|p\\.?m\\.?|a\\s?month|per\\s?week|weekly|a\\s?week))?/ig);\n  if (!matches || !matches.length) return '';\n  // Prefer the first price that looks like an advertised rent.\n  return matches[0].replace(/\\s+/g, ' ').trim();\n}\nfunction deriveTitle(anchorText, context, url) {\n  let title = stripHtml(anchorText || '');\n  if (title.length > 4 && !/^(view|view property|view listing|read more|more details|click here|apply now|contact agent|find out more)$/i.test(title)) {\n    return title.slice(0, 140);\n  }\n  const pathPart = new URL(url).pathname.split('/').filter(Boolean).pop() || '';\n  const slugTitle = decodeURIComponent(pathPart).replace(/[-_]+/g, ' ').replace(/\\.(html?|php)$/i, '').trim();\n  if (slugTitle && !/^\\d{4,}$/.test(slugTitle) && slugTitle.length > 4) return slugTitle.slice(0, 140);\n  const withoutPrice = String(context || '').replace(/€\\s?\\d[\\d,.]*/g, ' ');\n  const words = stripHtml(withoutPrice).split(/\\s+/).filter(Boolean);\n  return (words.slice(0, 12).join(' ') || 'Rental listing').slice(0, 140);\n}\nfunction slug(s) {\n  return String(s || '').toLowerCase().replace(/https?:\\/\\/\\S+/g, '').replace(/[^a-z0-9]+/g, ' ').trim();\n}\nfunction getPriority(listing) {\n  const l = `${listing.area} ${listing.title}`.toLowerCase();\n  const central = /city centre|temple bar|smithfield|stoneybatter|phibsborough|portobello|grand canal dock|harold's cross|rathmines|ranelagh|drumcondra|\\bdublin\\s*(?:1|2|4|6|7|8)\\b/i;\n  return central.test(l) ? 0 : 1;\n}\n\nconst listings = new Map();\nlet alertEmailsScanned = 0;\nfor (const item of inputItems) {\n  const j = item.json || {};\n  const subject = String(j.subject || j.Subject || 'Rental alert');\n  const html = String(j.html || j.textHtml || j.htmlBody || '');\n  const plain = String(j.text || j.textPlain || j.snippet || '');\n  if (!j.id && !html && !plain) continue;\n  alertEmailsScanned++;\n  const wholeText = (stripHtml(html) + ' ' + plain + ' ' + subject).trim();\n  const candidates = [];\n  if (html) {\n    const anchorRe = /<a\\b[^>]*href\\s*=\\s*(?:\"([^\"]+)\"|'([^']+)'|([^\\s>]+))[^>]*>([\\s\\S]*?)<\\/a>/gi;\n    let match;\n    while ((match = anchorRe.exec(html)) !== null) {\n      const rawUrl = match[1] || match[2] || match[3] || '';\n      const url = canonicalListingUrl(rawUrl);\n      if (!url) continue;\n      const anchorText = stripHtml(match[4] || '');\n      const start = Math.max(0, match.index - 900);\n      const end = Math.min(html.length, match.index + match[0].length + 900);\n      const context = stripHtml(html.slice(start, end));\n      candidates.push({ url, anchorText, context });\n    }\n  }\n  // Plain-text fallback for alerts where an HTML part is absent.\n  if (!candidates.length && plain) {\n    const urlRe = /https?:\\/\\/[^\\s<>\"']+/gi;\n    let match;\n    while ((match = urlRe.exec(plain)) !== null) {\n      const url = canonicalListingUrl(match[0].replace(/[),.;]+$/, ''));\n      if (!url) continue;\n      const context = plain.slice(Math.max(0, match.index - 350), Math.min(plain.length, match.index + 600));\n      candidates.push({ url, anchorText: '', context });\n    }\n  }\n\n  for (const c of candidates) {\n    const context = `${c.anchorText} ${c.context}`;\n    const lower = context.toLowerCase();\n    // Don't include room-only/shared-accommodation adverts; keep full homes and self-contained studios.\n    if (/\\b(room\\s+to\\s+rent|single\\s+room|shared\\s+room|roomshare|bedspace|renting\\s+a\\s+room)\\b/i.test(context)) continue;\n    const area = detectArea(context, wholeText);\n    if (!area) continue;\n    const price = detectPrice(context) || detectPrice(wholeText);\n    const title = deriveTitle(c.anchorText, context, c.url);\n    let bedrooms = '';\n    const bedMatch = context.match(/\\b(\\d+)\\s*(?:bed(?:room)?s?|beds)\\b/i);\n    if (bedMatch) bedrooms = `${bedMatch[1]} bed`;\n    let source = 'Property website';\n    try { source = getSource(c.url); } catch (e) {}\n    const received = j.date ? new Date(j.date).toLocaleString('en-IE', { timeZone: 'Europe/Dublin', dateStyle: 'medium', timeStyle: 'short' }) : '';\n    const normTitle = slug(title);\n    const semanticKey = `${normTitle}|${slug(price)}|${slug(area)}`;\n    const urlKey = c.url.toLowerCase();\n    const key = (normTitle.length > 8 && price) ? semanticKey : urlKey;\n    if (!listings.has(key)) {\n      listings.set(key, { title, url: c.url, price, area, bedrooms, source, received, priority: 1 });\n    }\n  }\n}\n\nconst results = [...listings.values()];\nfor (const l of results) l.priority = getPriority(l);\nresults.sort((a, b) => a.priority - b.priority || a.area.localeCompare(b.area) || a.title.localeCompare(b.title));\nconst dateLabel = new Intl.DateTimeFormat('en-IE', { timeZone: 'Europe/Dublin', dateStyle: 'full' }).format(new Date());\nconst timeLabel = new Intl.DateTimeFormat('en-IE', { timeZone: 'Europe/Dublin', hour: '2-digit', minute: '2-digit' }).format(new Date());\nlet html = `<!doctype html><html><body style=\"font-family:Arial,sans-serif;color:#202124;line-height:1.45;max-width:800px;margin:0 auto\"><div style=\"background:#16324f;color:#fff;padding:22px 24px;border-radius:12px 12px 0 0\"><div style=\"font-size:12px;letter-spacing:1.5px;text-transform:uppercase;opacity:.85\">Dublin Rental Radar</div><h1 style=\"font-size:24px;margin:8px 0 4px\">Your morning rental digest</h1><div>${esc(dateLabel)} · generated at ${esc(timeLabel)} (Ireland time)</div></div><div style=\"padding:20px 24px;border:1px solid #e4e7eb;border-top:0;border-radius:0 0 12px 12px\"><p style=\"font-size:16px\"><strong>${results.length}</strong> matching listing(s) found from <strong>${alertEmailsScanned}</strong> rental-alert email(s) received in the last 24 hours.</p>`;\nif (results.length) {\n  html += `<p style=\"color:#5f6368;font-size:13px\">City-centre and central-neighbourhood matches are shown first. Listings are collected from your own portal alerts; the price and details are extracted from email content when available.</p>`;\n  for (const l of results) {\n    html += `<div style=\"border:1px solid #e4e7eb;border-radius:10px;padding:15px 16px;margin:12px 0;background:#fff\"><div style=\"display:flex;justify-content:space-between;gap:12px;align-items:flex-start\"><div style=\"font-weight:700;font-size:17px\">${esc(l.title)}</div><div style=\"font-weight:700;font-size:18px;white-space:nowrap;color:#176b45\">${esc(l.price || 'Price not detected')}</div></div><div style=\"color:#444;margin:7px 0\">📍 ${esc(l.area)}${l.bedrooms ? ' · ' + esc(l.bedrooms) : ''}</div><div style=\"font-size:12px;color:#697078;margin-bottom:12px\">Source: ${esc(l.source)}${l.received ? ' · Alert received: ' + esc(l.received) : ''}</div><a href=\"${esc(l.url)}\" style=\"display:inline-block;background:#176b45;color:#fff;text-decoration:none;padding:9px 13px;border-radius:6px;font-weight:700\">Open listing ↗</a></div>`;\n  }\n} else {\n  html += `<div style=\"border:1px solid #e4e7eb;border-radius:10px;padding:18px;background:#f8fafc\"><h2 style=\"margin:0 0 8px;font-size:18px\">No new matching listings extracted today</h2><p style=\"margin:0\">This usually means there were no new matching portal alerts in the last 24 hours. If you know alert emails arrived, check that your Gmail filter applies the <strong>Rental-Alerts</strong> label and that the source emails include a Dublin/nearby area and a property link.</p></div>`;\n}\nhtml += `<hr style=\"border:0;border-top:1px solid #e4e7eb;margin:24px 0 14px\"><p style=\"font-size:12px;color:#697078\">Coverage depends on which property portals send alert emails to your Gmail account and the search areas selected in those alerts. This digest does not directly crawl websites. Always open the original advert to confirm availability, full rent, deposit, location and viewing instructions.</p></div></body></html>`;\nreturn [{ json: { html, subject: `Dublin Rental Radar — ${results.length} new listing(s) — ${dateLabel}`, listingCount: results.length, alertEmailsScanned } }];"
+      },
+      "id": "89d81302-2a49-417e-95e4-b3d5231d3e77",
+      "name": "Extract listings, filter Dublin and deduplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        16
+      ],
+      "notesInFlow": true,
+      "notes": "Parses alert email HTML/text, extracts listing URLs, rent price and location where available, excludes room-share ads, and deduplicates similar listings in the daily digest."
+    },
+    {
+      "parameters": {
+        "sendTo": "jasoncrasto2017@gmail.com",
+        "subject": "={{$json.subject}}",
+        "message": "={{$json.html}}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "668ae3c5-3b64-40c2-be39-3acc820edefd",
+      "name": "Email me the morning rental digest",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        512,
+        16
+      ],
+      "notesInFlow": true,
+      "webhookId": "b02b1bcc-39da-4ce7-81fe-849d572be8c1",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gQSPDs3x1nvLjH81",
+          "name": "Gmail account 3"
+        }
+      },
+      "notes": "Sends the daily digest to jasoncrasto2017@gmail.com."
+    },
+    {
+      "parameters": {},
+      "id": "725b4a85-af1c-4d62-8fc8-263d4e9f0cbc",
+      "name": "Manual test run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        128
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every morning at 07:00": {
+      "main": [
+        [
+          {
+            "node": "Get rental alert emails from the last 24 hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get rental alert emails from the last 24 hours": {
+      "main": [
+        [
+          {
+            "node": "Extract listings, filter Dublin and deduplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract listings, filter Dublin and deduplicate": {
+      "main": [
+        [
+          {
+            "node": "Email me the morning rental digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual test run": {
+      "main": [
+        [
+          {
+            "node": "Get rental alert emails from the last 24 hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "1b1f51ea-58ff-40a8-a95f-38d7887b692a",
+  "meta": {
+    "instanceId": "d3fc368e1472468d1d2407212c86d5cbbab5deaa633600ad2b6bbc3c9a29f39f"
+  },
+  "nodeGroups": [],
+  "id": "AY1q36GTcyqRnVji",
+  "tags": []
+}
